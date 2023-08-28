@@ -1,6 +1,9 @@
 #These are sales reports for various brands operating through multiple hubs.
 #Each brand has different format of its sales report. 
 #Main challenge here is to stage this all data within single table to draw analytics. 
+#Master template.xlsx is the universal template to be picked up for staging data to SQL DB. 
+#For each brand and hub there are some transformations are executed through python and then it is staged to SQL DB
+
 BTM (ITI)- 01	
 	 - Dabur CCD (KIA) - 01  
 	 - Dabur Real(Hyundai) - 02	
