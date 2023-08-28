@@ -11,4 +11,10 @@ In addition to its core functionalities, the ETL code also performs data validat
 
 Once all operations are completed successfully, this ETL code generates an upload report summarizing the entire process.
 
+By leveraging this ETL code and the underlying data lake, I have prepared a highly informative Dashboard that gives a complete overview of the business. Some key features of the Dashboard include:
 
+1. Brandwise Sales Analysis: Gain insights into individual brand performance, identify trends, and make informed decisions to drive growth.
+
+2. Retailer Analysis: Evaluate retailer performance based on sales data, identify top-performing retailers, repeat order ratio.
+
+3. Sales Target Achievement: Monitor how well your sales teams are achieving their targets and track progress towards set goals.
