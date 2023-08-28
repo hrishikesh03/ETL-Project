@@ -2,6 +2,10 @@ import pyodbc
 import os
 import pandas as pd
 import numpy as np
+import time
+from datetime import datetime
+
+Upload_date = "2021-08-31" #in YYYY-MM-DD' format
 
 os.chdir('F:\Projects\RIPPLR\SALES')
 hub_dir = pd.read_excel('F:\Projects\RIPPLR\Hub_directory.xlsx', 'Sheet1')
@@ -61,21 +65,31 @@ p['Hub'] = p['Hub_id'].map(map_hubs)
 p['Brand'] = p['Brand_id'].map(map_brands)
 
 os.chdir('F:\Projects\RIPPLR\SALES')
-filecount=0
+filecounter=0
 for index, row1 in p.iterrows():
     file = row1["filename"]
     brand_id = row1["Brand_id"]
     hub_id = row1["Hub_id"]
     brand = row1["Brand"]
     hub = row1["Hub"]
-    filecount+=1
 ##Hyundai ITI
     if brand_id =='02' and hub_id == '01':
+        filecounter+=1
         conn = pyodbc.connect('Driver={SQL Server};'
                               'Server=LAPTOP-TCEH1402;'
                               'Database=IPL_V1;'
                               'Trusted_Connection=yes;')
         cursor = conn.cursor()
+        
+        print("\nDeleting Records between {} to {} for brand Brand={} and Warehouse={}".format(first_day,Upload_date,brand,hub))
+        selection = str("select count(*) from [dbo].[sales_master] where brand = ")+ str(int(brand_id)) + str(" and  dms_invoice_date between '") + str(first_day) + str("' ") + str("and '") + Upload_date + str("'")
+        cursor.execute(selection)
+        for row1 in cursor.fetchall():
+            print("\n{} rows deleted".format(row1[0]))
+            
+        deletion = str("delete from [dbo].[sales_master] where brand = ")+ str(int(brand_id)) + str(" and  dms_invoice_date between '") + str(first_day) + str("' ") + str("and '") + Upload_date + str("'")
+        cursor.execute(deletion)
+        
         print("\n\nLoading file of {} from {}".format(brand,hub))
         hub_dir['File_flag'].mask((hub_dir['Hub_id'] == hub_id) & (hub_dir['Brand_id'] == brand_id) , 'Report Received',inplace = True)
         
@@ -155,12 +169,23 @@ for index, row1 in p.iterrows():
         print('\n{} rows inserted for brand {} and hub {}'.format(counter,brand,hub))
     
 #KIA ITI
-    if brand_id =='01' and hub_id == '01': 
+    if brand_id =='01' and hub_id == '01':
+            filecounter+=1
             conn = pyodbc.connect('Driver={SQL Server};'
                                   'Server=LAPTOP-TCEH1402;'
                                   'Database=IPL_V1;'
                                   'Trusted_Connection=yes;')
             cursor = conn.cursor()
+            
+            print("\nDeleting Records between {} to {} for brand Brand={} and Warehouse={}".format(first_day,Upload_date,brand,hub))
+            selection = str("select count(*) from [dbo].[sales_master] where brand = ")+ str(int(brand_id)) + str(" and  dms_invoice_date between '") + str(first_day) + str("' ") + str("and '") + Upload_date + str("'")
+            cursor.execute(selection)
+            for row1 in cursor.fetchall():
+                print("\n{} rows deleted".format(row1[0]))
+                
+            deletion = str("delete from [dbo].[sales_master] where brand = ")+ str(int(brand_id)) + str(" and  dms_invoice_date between '") + str(first_day) + str("' ") + str("and '") + Upload_date + str("'")
+            cursor.execute(deletion)
+            
             print("\n\nLoading file of {} from {}".format(brand,hub))
             hub_dir['File_flag'].mask((hub_dir['Hub_id'] == hub_id) & (hub_dir['Brand_id'] ==brand_id) , 'Report Received',inplace = True)
             
@@ -241,11 +266,20 @@ for index, row1 in p.iterrows():
             
 ##OneEight  NCK        
     if brand_id =='04' and hub_id == '02':
+        filecounter+=1
         conn = pyodbc.connect('Driver={SQL Server};'
                               'Server=LAPTOP-TCEH1402;'
                               'Database=IPL_V1;'
                               'Trusted_Connection=yes;')
         cursor = conn.cursor()
+        print("\nDeleting Records between {} to {} for brand Brand={} and Warehouse={}".format(first_day,Upload_date,brand,hub))
+        selection = str("select count(*) from [dbo].[sales_master] where brand = ")+ str(int(brand_id)) + str(" and  dms_invoice_date between '") + str(first_day) + str("' ") + str("and '") + Upload_date + str("'")
+        cursor.execute(selection)
+        for row1 in cursor.fetchall():
+            print("\n{} rows deleted".format(row1[0]))
+            
+        deletion = str("delete from [dbo].[sales_master] where brand = ")+ str(int(brand_id)) + str(" and  dms_invoice_date between '") + str(first_day) + str("' ") + str("and '") + Upload_date + str("'")
+        cursor.execute(deletion)
         print("\n\nLoading file of {} from {}".format(brand,hub))
         hub_dir['File_flag'].mask((hub_dir['Hub_id'] == hub_id) & (hub_dir['Brand_id'] == brand_id) , 'Report Received',inplace = True)
         
@@ -331,11 +365,22 @@ for index, row1 in p.iterrows():
 
 ##Puma NCK
     if brand_id =='05' and hub_id == '02':
+        filecounter+=1
         conn = pyodbc.connect('Driver={SQL Server};'
                               'Server=LAPTOP-TCEH1402;'
                               'Database=IPL_V1;'
                               'Trusted_Connection=yes;')
         cursor = conn.cursor()
+        
+        print("\nDeleting Records between {} to {} for brand Brand={} and Warehouse={}".format(first_day,Upload_date,brand,hub))
+        selection = str("select count(*) from [dbo].[sales_master] where brand = ")+ str(int(brand_id)) + str(" and  dms_invoice_date between '") + str(first_day) + str("' ") + str("and '") + Upload_date + str("'")
+        cursor.execute(selection)
+        for row1 in cursor.fetchall():
+            print("\n{} rows deleted".format(row1[0]))
+            
+        deletion = str("delete from [dbo].[sales_master] where brand = ")+ str(int(brand_id)) + str(" and  dms_invoice_date between '") + str(first_day) + str("' ") + str("and '") + Upload_date + str("'")
+        cursor.execute(deletion)
+        
         print("\n\nLoading file of {} from {}".format(brand,hub))
         hub_dir['File_flag'].mask((hub_dir['Hub_id'] == hub_id) & (hub_dir['Brand_id'] == brand_id) , 'Report Received',inplace = True)
         
@@ -421,11 +466,22 @@ for index, row1 in p.iterrows():
 
 ##Kimberly Clarke RP
     if brand_id == '09' and hub_id == '03':
+        filecounter+=1
         conn = pyodbc.connect('Driver={SQL Server};'
                               'Server=LAPTOP-TCEH1402;'
                               'Database=IPL_V1;'
                               'Trusted_Connection=yes;')
         cursor = conn.cursor()
+        
+        print("\nDeleting Records between {} to {} for brand Brand={} and Warehouse={}".format(first_day,Upload_date,brand,hub))
+        selection = str("select count(*) from [dbo].[sales_master] where brand = ")+ str(int(brand_id)) + str(" and  dms_invoice_date between '") + str(first_day) + str("' ") + str("and '") + Upload_date + str("'")
+        cursor.execute(selection)
+        for row1 in cursor.fetchall():
+            print("\n{} rows deleted".format(row1[0]))
+            
+        deletion = str("delete from [dbo].[sales_master] where brand = ")+ str(int(brand_id)) + str(" and  dms_invoice_date between '") + str(first_day) + str("' ") + str("and '") + Upload_date + str("'")
+        cursor.execute(deletion)
+        
         print("\n\nLoading file of {} from {}".format(brand,hub))
         hub_dir['File_flag'].mask((hub_dir['Hub_id'] == hub_id) & (hub_dir['Brand_id'] == brand_id) , 'Report Received',inplace = True)
         
@@ -494,13 +550,24 @@ for index, row1 in p.iterrows():
         
 
         
-##Telcom RP
+#Telcom RP
     if brand_id == '06' and hub_id == '03':
+        filecounter+=1
         conn = pyodbc.connect('Driver={SQL Server};'
                               'Server=LAPTOP-TCEH1402;'
                               'Database=IPL_V1;'
                               'Trusted_Connection=yes;')
         cursor = conn.cursor()
+        
+        print("\nDeleting Records between {} to {} for brand Brand={} and Warehouse={}".format(first_day,Upload_date,brand,hub))
+        selection = str("select count(*) from [dbo].[sales_master] where brand = ")+ str(int(brand_id)) + str(" and  dms_invoice_date between '") + str(first_day) + str("' ") + str("and '") + Upload_date + str("'")
+        cursor.execute(selection)
+        for row1 in cursor.fetchall():
+            print("\n{} rows deleted".format(row1[0]))
+            
+        deletion = str("delete from [dbo].[sales_master] where brand = ")+ str(int(brand_id)) + str(" and  dms_invoice_date between '") + str(first_day) + str("' ") + str("and '") + Upload_date + str("'")
+        cursor.execute(deletion)
+        
         print("\n\nLoading file of {} from {}".format(brand,hub))
         hub_dir['File_flag'].mask((hub_dir['Hub_id'] == hub_id) & (hub_dir['Brand_id'] == brand_id) , 'Report Received',inplace = True)
         
@@ -574,11 +641,22 @@ for index, row1 in p.iterrows():
         
 ##WD RP
     if brand_id =='07' and hub_id == '03':
+        filecounter+=1
         conn = pyodbc.connect('Driver={SQL Server};'
                               'Server=LAPTOP-TCEH1402;'
                               'Database=IPL_V1;'
                               'Trusted_Connection=yes;')
         cursor = conn.cursor()
+        
+        print("\nDeleting Records between {} to {} for brand Brand={} and Warehouse={}".format(first_day,Upload_date,brand,hub))
+        selection = str("select count(*) from [dbo].[sales_master] where brand = ")+ str(int(brand_id)) + str(" and  dms_invoice_date between '") + str(first_day) + str("' ") + str("and '") + Upload_date + str("'")
+        cursor.execute(selection)
+        for row1 in cursor.fetchall():
+            print("\n{} rows deleted".format(row1[0]))
+            
+        deletion = str("delete from [dbo].[sales_master] where brand = ")+ str(int(brand_id)) + str(" and  dms_invoice_date between '") + str(first_day) + str("' ") + str("and '") + Upload_date + str("'")
+        cursor.execute(deletion)
+        
         print("\n\nLoading file of {} from {}".format(brand,hub))
         hub_dir['File_flag'].mask((hub_dir['Hub_id'] == hub_id) & (hub_dir['Brand_id'] == brand_id) , 'Report Received',inplace = True)
         
@@ -653,11 +731,22 @@ for index, row1 in p.iterrows():
 
 #MCD RP    
     if brand_id =='08' and hub_id == '03':
+        filecounter+=1
         conn = pyodbc.connect('Driver={SQL Server};'
                               'Server=LAPTOP-TCEH1402;'
                               'Database=IPL_V1;'
                               'Trusted_Connection=yes;')
         cursor = conn.cursor()
+        
+        print("\nDeleting Records between {} to {} for brand Brand={} and Warehouse={}".format(first_day,Upload_date,brand,hub))
+        selection = str("select count(*) from [dbo].[sales_master] where brand = ")+ str(int(brand_id)) + str(" and  dms_invoice_date between '") + str(first_day) + str("' ") + str("and '") + Upload_date + str("'")
+        cursor.execute(selection)
+        for row1 in cursor.fetchall():
+            print("\n{} rows deleted".format(row1[0]))
+            
+        deletion = str("delete from [dbo].[sales_master] where brand = ")+ str(int(brand_id)) + str(" and  dms_invoice_date between '") + str(first_day) + str("' ") + str("and '") + Upload_date + str("'")
+        cursor.execute(deletion)
+        
         print("\n\nLoading file of {} from {}".format(brand,hub))
         hub_dir['File_flag'].mask((hub_dir['Hub_id'] == hub_id) & (hub_dir['Brand_id'] == brand_id) , 'Report Received',inplace = True)
         
@@ -733,11 +822,22 @@ for index, row1 in p.iterrows():
 
 ##Docomo BM
     if brand_id =='12' and hub_id == '04':
+        filecounter+=1
         conn = pyodbc.connect('Driver={SQL Server};'
                               'Server=LAPTOP-TCEH1402;'
                               'Database=IPL_V1;'
                               'Trusted_Connection=yes;')
         cursor = conn.cursor()
+        
+        print("\nDeleting Records between {} to {} for brand Brand={} and Warehouse={}".format(first_day,Upload_date,brand,hub))
+        selection = str("select count(*) from [dbo].[sales_master] where brand = ")+ str(int(brand_id)) + str(" and  dms_invoice_date between '") + str(first_day) + str("' ") + str("and '") + Upload_date + str("'")
+        cursor.execute(selection)
+        for row1 in cursor.fetchall():
+            print("\n{} rows deleted".format(row1[0]))
+            
+        deletion = str("delete from [dbo].[sales_master] where brand = ")+ str(int(brand_id)) + str(" and  dms_invoice_date between '") + str(first_day) + str("' ") + str("and '") + Upload_date + str("'")
+        cursor.execute(deletion)
+        
         print("\n\nLoading file of {} from {}".format(brand,hub))
         hub_dir['File_flag'].mask((hub_dir['Hub_id'] == hub_id) & (hub_dir['Brand_id'] == brand_id) , 'Report Received',inplace = True)
         
@@ -813,11 +913,22 @@ for index, row1 in p.iterrows():
 
 #MCD BM    
     if brand_id =='08' and hub_id == '04':
+        filecounter+=1
         conn = pyodbc.connect('Driver={SQL Server};'
                               'Server=LAPTOP-TCEH1402;'
                               'Database=IPL_V1;'
                               'Trusted_Connection=yes;')
         cursor = conn.cursor()
+        
+        print("\nDeleting Records between {} to {} for brand Brand={} and Warehouse={}".format(first_day,Upload_date,brand,hub))
+        selection = str("select count(*) from [dbo].[sales_master] where brand = ")+ str(int(brand_id)) + str(" and  dms_invoice_date between '") + str(first_day) + str("' ") + str("and '") + Upload_date + str("'")
+        cursor.execute(selection)
+        for row1 in cursor.fetchall():
+            print("\n{} rows deleted".format(row1[0]))
+            
+        deletion = str("delete from [dbo].[sales_master] where brand = ")+ str(int(brand_id)) + str(" and  dms_invoice_date between '") + str(first_day) + str("' ") + str("and '") + Upload_date + str("'")
+        cursor.execute(deletion)
+        
         print("\n\nLoading file of {} from {}".format(brand,hub))
         hub_dir['File_flag'].mask((hub_dir['Hub_id'] == hub_id) & (hub_dir['Brand_id'] == brand_id) , 'Report Received',inplace = True)
         
@@ -893,11 +1004,22 @@ for index, row1 in p.iterrows():
 
 ##KIA GGN
     if brand_id =='01' and hub_id == '05':
+        filecounter+=1
         conn = pyodbc.connect('Driver={SQL Server};'
                               'Server=LAPTOP-TCEH1402;'
                               'Database=IPL_V1;'
                               'Trusted_Connection=yes;')
         cursor = conn.cursor()
+        
+        print("\nDeleting Records between {} to {} for brand Brand={} and Warehouse={}".format(first_day,Upload_date,brand,hub))
+        selection = str("select count(*) from [dbo].[sales_master] where brand = ")+ str(int(brand_id)) + str(" and  dms_invoice_date between '") + str(first_day) + str("' ") + str("and '") + Upload_date + str("'")
+        cursor.execute(selection)
+        for row1 in cursor.fetchall():
+            print("\nBrand={} and Warehouse={}\n{} rows deleted".format(brand,hub,row1[0]))
+            
+        deletion = str("delete from [dbo].[sales_master] where brand = ")+ str(int(brand_id)) + str(" and  dms_invoice_date between '") + str(first_day) + str("' ") + str("and '") + Upload_date + str("'")
+        cursor.execute(deletion)
+        
         print("\n\nLoading file of {} from {}".format(brand,hub))
         hub_dir['File_flag'].mask((hub_dir['Hub_id'] == hub_id) & (hub_dir['Brand_id'] == brand_id) , 'Report Received',inplace = True)
         
@@ -981,8 +1103,8 @@ for index, row1 in p.iterrows():
 hub_dir['RC_validation_flag'] = np.where((hub_dir['Received_rows'] == hub_dir['Loaded_rows']) & (hub_dir['File_flag'] == 'Report Received'), 'Success',hub_dir['RC_validation_flag']) 
 
 print('\nGenerating data staging report...')
-print('\n files received = {} \n files loaded = {}'.format(p.shape[0],filecounter))
+print('\n files received = {} \n files loaded = {}'.format(p.shape[0]-1,filecounter))
 upload_path = r"F:\Projects\RIPPLR\Upload_Reports\\"
 hub_dir.to_excel(upload_path + 'Upload_report_' + str(datetime.fromtimestamp(time.time())).replace(':','_') + ".xlsx",index=False)
-print('\nReport Generated successfully. \nsaved at :' + upload_path)
+print('\nUpload Report Generated successfully. \nsaved at :' + upload_path)
                                                                  
