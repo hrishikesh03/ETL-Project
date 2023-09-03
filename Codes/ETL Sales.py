@@ -3,9 +3,13 @@ import os
 import pandas as pd
 import numpy as np
 import time
-from datetime import datetime
+import datetime
+from datetime import datetime, timedelta
 
 Upload_date = "2021-08-31" #in YYYY-MM-DD' format
+date_object = datetime.strptime(Upload_date, '%Y-%m-%d').date()
+day_num = date_object.strftime("%d")
+first_day = date_object - timedelta(days=int(day_num) - 1)
 
 os.chdir('F:\Projects\RIPPLR\SALES')
 hub_dir = pd.read_excel('F:\Projects\RIPPLR\Hub_directory.xlsx', 'Sheet1')
@@ -64,7 +68,6 @@ print('Mapping Hubs and Brands\n')
 p['Hub'] = p['Hub_id'].map(map_hubs)
 p['Brand'] = p['Brand_id'].map(map_brands)
 
-os.chdir('F:\Projects\RIPPLR\SALES')
 filecounter=0
 for index, row1 in p.iterrows():
     file = row1["filename"]
@@ -72,25 +75,125 @@ for index, row1 in p.iterrows():
     hub_id = row1["Hub_id"]
     brand = row1["Brand"]
     hub = row1["Hub"]
+    
+    
+#KIA ITI
+    if brand_id =='01' and hub_id == '01':
+            filecounter+=1
+            conn = pyodbc.connect('Driver={SQL Server};'
+                                  'Server=LAPTOP-TCEH1402;'
+                                  'Database=Sales_Lake;'
+                                  'Trusted_Connection=yes;')
+            cursor = conn.cursor()
+            
+            print("\n\nDeleting Records between {} to {} for brand {} and Warehouse={}".format(first_day,Upload_date,brand,hub))
+            selection = str("select count(*) from [dbo].[sales_master] where brand = ") + str(int(brand_id)) + " and  warehouse = " + str(int(hub_id)) + str(" and  dms_invoice_date between '") + str(first_day) + str("' ") + str("and '") + Upload_date + str("'")
+            cursor.execute(selection)
+            for row1 in cursor.fetchall():
+                print("\n{} rows deleted".format(row1[0]))
+                
+            deletion = str("delete from [dbo].[sales_master] where brand = ")+ str(int(brand_id)) +" and  warehouse = " + str(int(hub_id)) + str(" and  dms_invoice_date between '") + str(first_day) + str("' ") + str("and '") + Upload_date + str("'")
+            cursor.execute(deletion)
+            
+            print("\nLoading file of {} from {}".format(brand,hub))
+            hub_dir['File_flag'].mask((hub_dir['Hub_id'] == hub_id) & (hub_dir['Brand_id'] ==brand_id) , 'Report Received',inplace = True)
+            
+            copy_from = pd.read_excel(file, 'Sheet1', skiprows=2)
+            hub_dir['Received_rows'].mask((hub_dir['Hub_id'] == hub_id) & (hub_dir['Brand_id'] ==brand_id) ,copy_from.shape[0] ,inplace = True)
+            
+            master_tamplate = pd.read_excel('master template.xlsx')
+            master_tamplate[['dms_invoice_number']] = copy_from[['Bill Number']].copy()
+            master_tamplate[['dms_invoice_date']] = copy_from[['Bill Date']].copy()
+            master_tamplate[['retailer_code']] = copy_from[['Retailer Code']].copy()
+            master_tamplate[['retailer_name']] = copy_from[['Retailer Name']].copy()
+            # master_tamplate[['hsn_code']] = copy_from[['HSN Code']].copy()
+            # master_tamplate[['hsn_name']] = copy_from[['HSN Name']].copy()
+            master_tamplate[['product_code']] = copy_from[['Product Code']].copy()
+            master_tamplate[['product_description']] = copy_from[['Product Name']].copy()
+            # master_tamplate[['mrp']] = copy_from[['MRP']].copy()
+            # master_tamplate[['batch_code']] = copy_from[['Batch Code']].copy()
+            master_tamplate[['sales_quantity']] = copy_from[['Sales Qty']].copy()
+            # master_tamplate[['free_qty']] = copy_from[['Free Qty']].copy()
+            #master_tamplate[['sales_quantity']] = copy_from[['Total Qty']].copy()
+            master_tamplate[['gross_amount']] = copy_from[['Sales Value']].copy()
+            # master_tamplate[['scheme_discount']] = copy_from[['Scheme Amount']].copy()
+            # master_tamplate[['spl_discount']] = copy_from[['Spl.Discount']].copy()
+            # master_tamplate[['dp']] = copy_from[['Selling Rate']].copy()
+            master_tamplate[['salesman_code']] = copy_from[['Salesman Code']].copy()
+            master_tamplate[['salesman_name']] = copy_from[['Salesman Name']].copy()
+            master_tamplate[['total_discount']] = copy_from[['Total Discount']].copy()
+            master_tamplate[['total_tax_amount']] = copy_from[['Total Tax']].copy()
+            master_tamplate[['net_amount']] = copy_from[['Net Amount']].copy()
+            master_tamplate[['brand']] = brand_id
+            master_tamplate[['warehouse']] = hub_id
+            
+            df = pd.DataFrame(master_tamplate)
+            print('\n=> Transformations completed')            
+            print('\n=> Fetching required columns')           
+            counter = 0
+            for row in df.itertuples():
+                counter+=1
+                cursor.execute('''
+                                INSERT INTO dbo.sales_master 
+                                        (    dms_invoice_number
+                                            ,dms_invoice_date
+                                            ,retailer_code 
+                                            ,retailer_name
+                                            ,product_code 
+                                            ,product_description 
+                                            ,sales_quantity 
+                                            ,gross_amount 
+                                            ,salesman_code 
+                                            ,salesman_name
+                                            ,total_discount 
+                                            ,total_tax_amount 
+                                            ,net_amount
+                                            ,brand
+                                            ,warehouse
+                                        )
+                                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                            ''',
+                                     row.dms_invoice_number
+                                    ,row.dms_invoice_date
+                                    ,row.retailer_code
+                                    ,row.retailer_name
+                                    ,row.product_code
+                                    ,row.product_description
+                                    ,row.sales_quantity
+                                    ,row.gross_amount
+                                    ,row.salesman_code
+                                    ,row.salesman_name
+                                    ,row.total_discount
+                                    ,row.total_tax_amount
+                                    ,row.net_amount
+                                    ,row.brand
+                                    ,row.warehouse
+                              )
+            hub_dir['Loaded_rows'].mask((hub_dir['Hub_id'] == hub_id) & (hub_dir['Brand_id'] ==brand_id) ,counter ,inplace = True)
+            conn.commit()
+            print('\n{} rows inserted for brand {} and hub {}'.format(counter,brand,hub))
+         
+        
+        
 ##Hyundai ITI
     if brand_id =='02' and hub_id == '01':
         filecounter+=1
         conn = pyodbc.connect('Driver={SQL Server};'
                               'Server=LAPTOP-TCEH1402;'
-                              'Database=IPL_V1;'
+                              'Database=Sales_Lake;'
                               'Trusted_Connection=yes;')
         cursor = conn.cursor()
         
-        print("\nDeleting Records between {} to {} for brand Brand={} and Warehouse={}".format(first_day,Upload_date,brand,hub))
-        selection = str("select count(*) from [dbo].[sales_master] where brand = ")+ str(int(brand_id)) + str(" and  dms_invoice_date between '") + str(first_day) + str("' ") + str("and '") + Upload_date + str("'")
+        print("\n\nDeleting Records between {} to {} for brand {} and Warehouse={}".format(first_day,Upload_date,brand,hub))
+        selection = str("select count(*) from [dbo].[sales_master] where brand = ") + str(int(brand_id)) + " and  warehouse = " + str(int(hub_id)) + str(" and  dms_invoice_date between '") + str(first_day) + str("' ") + str("and '") + Upload_date + str("'")
         cursor.execute(selection)
         for row1 in cursor.fetchall():
             print("\n{} rows deleted".format(row1[0]))
             
-        deletion = str("delete from [dbo].[sales_master] where brand = ")+ str(int(brand_id)) + str(" and  dms_invoice_date between '") + str(first_day) + str("' ") + str("and '") + Upload_date + str("'")
+        deletion = str("delete from [dbo].[sales_master] where brand = ")+ str(int(brand_id)) +" and  warehouse = " + str(int(hub_id)) + str(" and  dms_invoice_date between '") + str(first_day) + str("' ") + str("and '") + Upload_date + str("'")
         cursor.execute(deletion)
         
-        print("\n\nLoading file of {} from {}".format(brand,hub))
+        print("\nLoading file of {} from {}".format(brand,hub))
         hub_dir['File_flag'].mask((hub_dir['Hub_id'] == hub_id) & (hub_dir['Brand_id'] == brand_id) , 'Report Received',inplace = True)
         
         copy_from = pd.read_excel(file, 'Sheet1', skiprows=2)
@@ -168,119 +271,25 @@ for index, row1 in p.iterrows():
         hub_dir['Loaded_rows'].mask((hub_dir['Hub_id'] == hub_id) & (hub_dir['Brand_id'] == brand_id) ,counter ,inplace = True)
         print('\n{} rows inserted for brand {} and hub {}'.format(counter,brand,hub))
     
-#KIA ITI
-    if brand_id =='01' and hub_id == '01':
-            filecounter+=1
-            conn = pyodbc.connect('Driver={SQL Server};'
-                                  'Server=LAPTOP-TCEH1402;'
-                                  'Database=IPL_V1;'
-                                  'Trusted_Connection=yes;')
-            cursor = conn.cursor()
-            
-            print("\nDeleting Records between {} to {} for brand Brand={} and Warehouse={}".format(first_day,Upload_date,brand,hub))
-            selection = str("select count(*) from [dbo].[sales_master] where brand = ")+ str(int(brand_id)) + str(" and  dms_invoice_date between '") + str(first_day) + str("' ") + str("and '") + Upload_date + str("'")
-            cursor.execute(selection)
-            for row1 in cursor.fetchall():
-                print("\n{} rows deleted".format(row1[0]))
-                
-            deletion = str("delete from [dbo].[sales_master] where brand = ")+ str(int(brand_id)) + str(" and  dms_invoice_date between '") + str(first_day) + str("' ") + str("and '") + Upload_date + str("'")
-            cursor.execute(deletion)
-            
-            print("\n\nLoading file of {} from {}".format(brand,hub))
-            hub_dir['File_flag'].mask((hub_dir['Hub_id'] == hub_id) & (hub_dir['Brand_id'] ==brand_id) , 'Report Received',inplace = True)
-            
-            copy_from = pd.read_excel(file, 'Sheet1', skiprows=2)
-            hub_dir['Received_rows'].mask((hub_dir['Hub_id'] == hub_id) & (hub_dir['Brand_id'] ==brand_id) ,copy_from.shape[0] ,inplace = True)
-            
-            master_tamplate = pd.read_excel('master template.xlsx')
-            master_tamplate[['dms_invoice_number']] = copy_from[['Bill Number']].copy()
-            master_tamplate[['dms_invoice_date']] = copy_from[['Bill Date']].copy()
-            master_tamplate[['retailer_code']] = copy_from[['Retailer Code']].copy()
-            master_tamplate[['retailer_name']] = copy_from[['Retailer Name']].copy()
-            # master_tamplate[['hsn_code']] = copy_from[['HSN Code']].copy()
-            # master_tamplate[['hsn_name']] = copy_from[['HSN Name']].copy()
-            master_tamplate[['product_code']] = copy_from[['Product Code']].copy()
-            master_tamplate[['product_description']] = copy_from[['Product Name']].copy()
-            # master_tamplate[['mrp']] = copy_from[['MRP']].copy()
-            # master_tamplate[['batch_code']] = copy_from[['Batch Code']].copy()
-            master_tamplate[['sales_quantity']] = copy_from[['Sales Qty']].copy()
-            # master_tamplate[['free_qty']] = copy_from[['Free Qty']].copy()
-            #master_tamplate[['sales_quantity']] = copy_from[['Total Qty']].copy()
-            master_tamplate[['gross_amount']] = copy_from[['Sales Value']].copy()
-            # master_tamplate[['scheme_discount']] = copy_from[['Scheme Amount']].copy()
-            # master_tamplate[['spl_discount']] = copy_from[['Spl.Discount']].copy()
-            # master_tamplate[['dp']] = copy_from[['Selling Rate']].copy()
-            master_tamplate[['salesman_code']] = copy_from[['Salesman Code']].copy()
-            master_tamplate[['salesman_name']] = copy_from[['Salesman Name']].copy()
-            master_tamplate[['total_discount']] = copy_from[['Total Discount']].copy()
-            master_tamplate[['total_tax_amount']] = copy_from[['Total Tax']].copy()
-            master_tamplate[['net_amount']] = copy_from[['Net Amount']].copy()
-            master_tamplate[['brand']] = brand_id
-            master_tamplate[['warehouse']] = hub_id
-            
-            df = pd.DataFrame(master_tamplate)
-            print('\n=> Transformations completed')            
-            print('\n=> Fetching required columns')           
-            counter = 0
-            for row in df.itertuples():
-                counter+=1
-                cursor.execute('''
-                                INSERT INTO dbo.sales_master 
-                                        (    dms_invoice_number
-                                            ,dms_invoice_date
-                                            ,retailer_code 
-                                            ,retailer_name
-                                            ,product_code 
-                                            ,product_description 
-                                            ,sales_quantity 
-                                            ,gross_amount 
-                                            ,salesman_code 
-                                            ,salesman_name
-                                            ,total_discount 
-                                            ,total_tax_amount 
-                                            ,net_amount
-                                            ,brand
-                                            ,warehouse
-                                        )
-                                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-                            ''',
-                                     row.dms_invoice_number
-                                    ,row.dms_invoice_date
-                                    ,row.retailer_code
-                                    ,row.retailer_name
-                                    ,row.product_code
-                                    ,row.product_description
-                                    ,row.sales_quantity
-                                    ,row.gross_amount
-                                    ,row.salesman_code
-                                    ,row.salesman_name
-                                    ,row.total_discount
-                                    ,row.total_tax_amount
-                                    ,row.net_amount
-                                    ,row.brand
-                                    ,row.warehouse
-                              )
-            hub_dir['Loaded_rows'].mask((hub_dir['Hub_id'] == hub_id) & (hub_dir['Brand_id'] ==brand_id) ,counter ,inplace = True)
-            conn.commit()
-            print('\n{} rows inserted for brand {} and hub {}'.format(counter,brand,hub))
-            
+     
+        
 ##OneEight  NCK        
     if brand_id =='04' and hub_id == '02':
         filecounter+=1
         conn = pyodbc.connect('Driver={SQL Server};'
                               'Server=LAPTOP-TCEH1402;'
-                              'Database=IPL_V1;'
+                              'Database=Sales_Lake;'
                               'Trusted_Connection=yes;')
         cursor = conn.cursor()
-        print("\nDeleting Records between {} to {} for brand Brand={} and Warehouse={}".format(first_day,Upload_date,brand,hub))
-        selection = str("select count(*) from [dbo].[sales_master] where brand = ")+ str(int(brand_id)) + str(" and  dms_invoice_date between '") + str(first_day) + str("' ") + str("and '") + Upload_date + str("'")
+        print("\n\nDeleting Records between {} to {} for brand {} and Warehouse={}".format(first_day,Upload_date,brand,hub))
+        selection = str("select count(*) from [dbo].[sales_master] where brand = ") + str(int(brand_id)) + " and  warehouse = " + str(int(hub_id)) + str(" and  dms_invoice_date between '") + str(first_day) + str("' ") + str("and '") + Upload_date + str("'")
         cursor.execute(selection)
         for row1 in cursor.fetchall():
             print("\n{} rows deleted".format(row1[0]))
             
-        deletion = str("delete from [dbo].[sales_master] where brand = ")+ str(int(brand_id)) + str(" and  dms_invoice_date between '") + str(first_day) + str("' ") + str("and '") + Upload_date + str("'")
+        deletion = str("delete from [dbo].[sales_master] where brand = ")+ str(int(brand_id)) +" and  warehouse = " + str(int(hub_id)) + str(" and  dms_invoice_date between '") + str(first_day) + str("' ") + str("and '") + Upload_date + str("'")
         cursor.execute(deletion)
-        print("\n\nLoading file of {} from {}".format(brand,hub))
+        print("\nLoading file of {} from {}".format(brand,hub))
         hub_dir['File_flag'].mask((hub_dir['Hub_id'] == hub_id) & (hub_dir['Brand_id'] == brand_id) , 'Report Received',inplace = True)
         
         copy_from = pd.read_excel(file, skiprows =13)
@@ -363,25 +372,27 @@ for index, row1 in p.iterrows():
         hub_dir['Loaded_rows'].mask((hub_dir['Hub_id'] == hub_id) & (hub_dir['Brand_id'] ==brand_id) ,counter ,inplace = True)
         print('\n{} rows inserted for brand {} and hub {}'.format(counter,brand,hub))
 
+        
+        
 ##Puma NCK
     if brand_id =='05' and hub_id == '02':
         filecounter+=1
         conn = pyodbc.connect('Driver={SQL Server};'
                               'Server=LAPTOP-TCEH1402;'
-                              'Database=IPL_V1;'
+                              'Database=Sales_Lake;'
                               'Trusted_Connection=yes;')
         cursor = conn.cursor()
         
-        print("\nDeleting Records between {} to {} for brand Brand={} and Warehouse={}".format(first_day,Upload_date,brand,hub))
-        selection = str("select count(*) from [dbo].[sales_master] where brand = ")+ str(int(brand_id)) + str(" and  dms_invoice_date between '") + str(first_day) + str("' ") + str("and '") + Upload_date + str("'")
+        print("\n\nDeleting Records between {} to {} for brand {} and Warehouse={}".format(first_day,Upload_date,brand,hub))
+        selection = str("select count(*) from [dbo].[sales_master] where brand = ") + str(int(brand_id)) + " and  warehouse = " + str(int(hub_id)) + str(" and  dms_invoice_date between '") + str(first_day) + str("' ") + str("and '") + Upload_date + str("'")
         cursor.execute(selection)
         for row1 in cursor.fetchall():
             print("\n{} rows deleted".format(row1[0]))
             
-        deletion = str("delete from [dbo].[sales_master] where brand = ")+ str(int(brand_id)) + str(" and  dms_invoice_date between '") + str(first_day) + str("' ") + str("and '") + Upload_date + str("'")
+        deletion = str("delete from [dbo].[sales_master] where brand = ")+ str(int(brand_id)) +" and  warehouse = " + str(int(hub_id)) + str(" and  dms_invoice_date between '") + str(first_day) + str("' ") + str("and '") + Upload_date + str("'")
         cursor.execute(deletion)
         
-        print("\n\nLoading file of {} from {}".format(brand,hub))
+        print("\nLoading file of {} from {}".format(brand,hub))
         hub_dir['File_flag'].mask((hub_dir['Hub_id'] == hub_id) & (hub_dir['Brand_id'] == brand_id) , 'Report Received',inplace = True)
         
         copy_from = pd.read_excel(file, skiprows =13)
@@ -464,111 +475,27 @@ for index, row1 in p.iterrows():
         hub_dir['Loaded_rows'].mask((hub_dir['Hub_id'] == hub_id) & (hub_dir['Brand_id'] == brand_id) ,counter ,inplace = True)
         print('\n{} rows inserted for brand {} and hub {}'.format(counter,brand,hub))
 
-##Kimberly Clarke RP
-    if brand_id == '09' and hub_id == '03':
-        filecounter+=1
-        conn = pyodbc.connect('Driver={SQL Server};'
-                              'Server=LAPTOP-TCEH1402;'
-                              'Database=IPL_V1;'
-                              'Trusted_Connection=yes;')
-        cursor = conn.cursor()
-        
-        print("\nDeleting Records between {} to {} for brand Brand={} and Warehouse={}".format(first_day,Upload_date,brand,hub))
-        selection = str("select count(*) from [dbo].[sales_master] where brand = ")+ str(int(brand_id)) + str(" and  dms_invoice_date between '") + str(first_day) + str("' ") + str("and '") + Upload_date + str("'")
-        cursor.execute(selection)
-        for row1 in cursor.fetchall():
-            print("\n{} rows deleted".format(row1[0]))
-            
-        deletion = str("delete from [dbo].[sales_master] where brand = ")+ str(int(brand_id)) + str(" and  dms_invoice_date between '") + str(first_day) + str("' ") + str("and '") + Upload_date + str("'")
-        cursor.execute(deletion)
-        
-        print("\n\nLoading file of {} from {}".format(brand,hub))
-        hub_dir['File_flag'].mask((hub_dir['Hub_id'] == hub_id) & (hub_dir['Brand_id'] == brand_id) , 'Report Received',inplace = True)
-        
-        copy_from = pd.read_excel(file, skiprows=18)
-        hub_dir['Received_rows'].mask((hub_dir['Hub_id'] == hub_id) & (hub_dir['Brand_id'] == brand_id) ,copy_from.shape[0] ,inplace = True) 
-        
-        master_tamplate = pd.read_excel('master template.xlsx')        
-        master_tamplate['dms_invoice_date'] = copy_from['Transaction Date'].copy()
-        master_tamplate[['dms_invoice_number']] = copy_from[['Transaction No.']].copy()
-        master_tamplate[['retailer_code']] = copy_from[['Customer Code']].copy()
-        master_tamplate[['retailer_name']] = copy_from[['Customer Name']].copy()
-        master_tamplate[['product_code']] = copy_from[['Product Code']].copy()
-        master_tamplate[['product_description']] = copy_from[['Product Description ']].copy()
-        master_tamplate[['gross_amount']] = copy_from[['Gross Amount (₹)']].copy()
-        # master_tamplate[['promotion_discount_amount']] = copy_from[['Discount Amt (₹)']].copy()
-        master_tamplate[['total_tax_amount']] = copy_from[['Tax Amount (₹)']].copy()
-        master_tamplate[['net_amount']] = copy_from[['Net Price(₹)']].copy()
-        master_tamplate[['gstr1']] = copy_from[['Transaction Type']].copy()
-        master_tamplate[['salesman_code']] = copy_from[['Salesman Code']].copy()
-        master_tamplate[['salesman_name']] = copy_from[['Salesman Name ']].copy()
-        master_tamplate[['brand']] = brand_id
-        master_tamplate[['warehouse']] = brand_id
-        df = pd.DataFrame(master_tamplate)
-        print('\n=> Transformations completed')        
-        print('\n=> Fetching required columns')        
-        counter = 0
-        for row in df.itertuples():
-            counter+=1
-            cursor.execute('''
-                            INSERT INTO dbo.sales_master 
-                                    (    dms_invoice_number
-                                        ,dms_invoice_date
-                                        ,retailer_code 
-                                        ,retailer_name
-                                        ,product_code 
-                                        ,product_description 
-                                        ,gross_amount 
-                                        ,total_tax_amount
-                                        ,net_amount
-                                        ,gstr1
-                                        ,salesman_code
-                                        ,salesman_name
-                                        ,brand
-                                        ,warehouse
-                                    )
-                                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-                        ''',
-                                 row.dms_invoice_number
-                                ,row.dms_invoice_date
-                                ,row.retailer_code
-                                ,row.retailer_name
-                                ,row.product_code
-                                ,row.product_description
-                                ,row.gross_amount
-                                ,row.total_tax_amount
-                                ,row.net_amount
-                                ,row.gstr1
-                                ,row.salesman_code
-                                ,row.salesman_name
-                                ,row.brand
-                                ,row.warehouse
-                          )
-        conn.commit()
-        hub_dir['Loaded_rows'].mask((hub_dir['Hub_id'] == hub_id) & (hub_dir['Brand_id'] == brand_id) ,counter ,inplace = True)
-        print('\n{} rows inserted for brand {} and hub {}'.format(counter,brand,hub))
         
 
-        
 #Telcom RP
     if brand_id == '06' and hub_id == '03':
         filecounter+=1
         conn = pyodbc.connect('Driver={SQL Server};'
                               'Server=LAPTOP-TCEH1402;'
-                              'Database=IPL_V1;'
+                              'Database=Sales_Lake;'
                               'Trusted_Connection=yes;')
         cursor = conn.cursor()
         
-        print("\nDeleting Records between {} to {} for brand Brand={} and Warehouse={}".format(first_day,Upload_date,brand,hub))
-        selection = str("select count(*) from [dbo].[sales_master] where brand = ")+ str(int(brand_id)) + str(" and  dms_invoice_date between '") + str(first_day) + str("' ") + str("and '") + Upload_date + str("'")
+        print("\n\nDeleting Records between {} to {} for brand {} and Warehouse={}".format(first_day,Upload_date,brand,hub))
+        selection = str("select count(*) from [dbo].[sales_master] where brand = ") + str(int(brand_id)) + " and  warehouse = " + str(int(hub_id)) + str(" and  dms_invoice_date between '") + str(first_day) + str("' ") + str("and '") + Upload_date + str("'")
         cursor.execute(selection)
         for row1 in cursor.fetchall():
             print("\n{} rows deleted".format(row1[0]))
             
-        deletion = str("delete from [dbo].[sales_master] where brand = ")+ str(int(brand_id)) + str(" and  dms_invoice_date between '") + str(first_day) + str("' ") + str("and '") + Upload_date + str("'")
+        deletion = str("delete from [dbo].[sales_master] where brand = ")+ str(int(brand_id)) +" and  warehouse = " + str(int(hub_id)) + str(" and  dms_invoice_date between '") + str(first_day) + str("' ") + str("and '") + Upload_date + str("'")
         cursor.execute(deletion)
         
-        print("\n\nLoading file of {} from {}".format(brand,hub))
+        print("\nLoading file of {} from {}".format(brand,hub))
         hub_dir['File_flag'].mask((hub_dir['Hub_id'] == hub_id) & (hub_dir['Brand_id'] == brand_id) , 'Report Received',inplace = True)
         
         copy_from = pd.read_excel(file, 'Sheet1', skiprows=2)
@@ -638,26 +565,28 @@ for index, row1 in p.iterrows():
         conn.commit()
         hub_dir['Loaded_rows'].mask((hub_dir['Hub_id'] == hub_id) & (hub_dir['Brand_id'] == brand_id) ,counter ,inplace = True)
         print('\n{} rows inserted for brand {} and hub {}'.format(counter,brand,hub))
-        
+    
+    
+    
 ##WD RP
     if brand_id =='07' and hub_id == '03':
         filecounter+=1
         conn = pyodbc.connect('Driver={SQL Server};'
                               'Server=LAPTOP-TCEH1402;'
-                              'Database=IPL_V1;'
+                              'Database=Sales_Lake;'
                               'Trusted_Connection=yes;')
         cursor = conn.cursor()
         
-        print("\nDeleting Records between {} to {} for brand Brand={} and Warehouse={}".format(first_day,Upload_date,brand,hub))
-        selection = str("select count(*) from [dbo].[sales_master] where brand = ")+ str(int(brand_id)) + str(" and  dms_invoice_date between '") + str(first_day) + str("' ") + str("and '") + Upload_date + str("'")
+        print("\n\nDeleting Records between {} to {} for brand {} and Warehouse={}".format(first_day,Upload_date,brand,hub))
+        selection = str("select count(*) from [dbo].[sales_master] where brand = ") + str(int(brand_id)) + " and  warehouse = " + str(int(hub_id)) + str(" and  dms_invoice_date between '") + str(first_day) + str("' ") + str("and '") + Upload_date + str("'")
         cursor.execute(selection)
         for row1 in cursor.fetchall():
             print("\n{} rows deleted".format(row1[0]))
             
-        deletion = str("delete from [dbo].[sales_master] where brand = ")+ str(int(brand_id)) + str(" and  dms_invoice_date between '") + str(first_day) + str("' ") + str("and '") + Upload_date + str("'")
+        deletion = str("delete from [dbo].[sales_master] where brand = ")+ str(int(brand_id)) +" and  warehouse = " + str(int(hub_id)) + str(" and  dms_invoice_date between '") + str(first_day) + str("' ") + str("and '") + Upload_date + str("'")
         cursor.execute(deletion)
         
-        print("\n\nLoading file of {} from {}".format(brand,hub))
+        print("\nLoading file of {} from {}".format(brand,hub))
         hub_dir['File_flag'].mask((hub_dir['Hub_id'] == hub_id) & (hub_dir['Brand_id'] == brand_id) , 'Report Received',inplace = True)
         
         copy_from = pd.read_excel(file, 'Sheet1', skiprows=2)
@@ -729,47 +658,63 @@ for index, row1 in p.iterrows():
         hub_dir['Loaded_rows'].mask((hub_dir['Hub_id'] == hub_id) & (hub_dir['Brand_id'] == brand_id) ,counter ,inplace = True)
         print('\n{} rows inserted for brand {} and hub {}'.format(counter,brand,hub))
 
+        
+        
 #MCD RP    
     if brand_id =='08' and hub_id == '03':
         filecounter+=1
         conn = pyodbc.connect('Driver={SQL Server};'
                               'Server=LAPTOP-TCEH1402;'
-                              'Database=IPL_V1;'
+                              'Database=Sales_Lake;'
                               'Trusted_Connection=yes;')
         cursor = conn.cursor()
         
-        print("\nDeleting Records between {} to {} for brand Brand={} and Warehouse={}".format(first_day,Upload_date,brand,hub))
-        selection = str("select count(*) from [dbo].[sales_master] where brand = ")+ str(int(brand_id)) + str(" and  dms_invoice_date between '") + str(first_day) + str("' ") + str("and '") + Upload_date + str("'")
+        print("\n\nDeleting Records between {} to {} for brand {} and Warehouse={}".format(first_day,Upload_date,brand,hub))
+        selection = str("select count(*) from [dbo].[sales_master] where brand = ") + str(int(brand_id)) + " and  warehouse = " + str(int(hub_id)) + str(" and  dms_invoice_date between '") + str(first_day) + str("' ") + str("and '") + Upload_date + str("'")
         cursor.execute(selection)
         for row1 in cursor.fetchall():
             print("\n{} rows deleted".format(row1[0]))
             
-        deletion = str("delete from [dbo].[sales_master] where brand = ")+ str(int(brand_id)) + str(" and  dms_invoice_date between '") + str(first_day) + str("' ") + str("and '") + Upload_date + str("'")
+        deletion = str("delete from [dbo].[sales_master] where brand = ")+ str(int(brand_id)) +" and  warehouse = " + str(int(hub_id)) + str(" and  dms_invoice_date between '") + str(first_day) + str("' ") + str("and '") + Upload_date + str("'")
+        print(deletion)
         cursor.execute(deletion)
         
-        print("\n\nLoading file of {} from {}".format(brand,hub))
+        print("\nLoading file of {} from {}".format(brand,hub))
         hub_dir['File_flag'].mask((hub_dir['Hub_id'] == hub_id) & (hub_dir['Brand_id'] == brand_id) , 'Report Received',inplace = True)
         
-        copy_from = pd.read_excel(file, 'Sheet1', skiprows=2)
+        copy_from = pd.read_excel(file, 'Bill Wise Sales', skiprows=14)
+        copy_from = copy_from[copy_from['Party'] != 'GRAND TOTAL']
+        for index, row in copy_from.iterrows():
+            bill_date = row['Bill Date']
+            sales_value = row['Gross Sales']
+            if sales_value < 0 and bill_date < first_day:
+                    copy_from.at[index, 'Bill Date'] = Upload_date
         hub_dir['Received_rows'].mask((hub_dir['Hub_id'] == hub_id) & (hub_dir['Brand_id'] == brand_id) ,copy_from.shape[0] ,inplace = True) 
-
+        
+        master_tamplate = pd.read_excel('master template.xlsx')
         # master_tamplate[['sno']] = copy_from[['Sr No']].copy()
         # master_tamplate[['beat']] = copy_from[['BEAT_NAME']].copy()
+        # master_tamplate[['category']] = copy_from[['CATEGORY']].copy()
+        # master_tamplate[['channel']] = copy_from[['PRIMARY_CHANNEL']].copy()
+        # master_tamplate[['secondary_channel']] = copy_from[['SECONDARY_CHANNEL']].copy()
         master_tamplate[['dms_invoice_number']] = copy_from[['Bill Number']].copy()
         master_tamplate[['dms_invoice_date']] = copy_from[['Bill Date']].copy()
+        #master_tamplate['dms_invoice_date'] = pd.to_datetime(master_tamplate['dms_invoice_date']).dt.date
         # master_tamplate[['dms_invoice_status']] = copy_from[['BILL_STATUS']].copy()
         # master_tamplate[['free_qty']] = copy_from[['SALES_FREE_QTY']].copy()
         master_tamplate[['gross_amount']] = copy_from[['Gross Sales']].copy()
         # master_tamplate[['invoice_quantity']] = copy_from[['TOTAL_SALES_QTY']].copy()
-        # master_tamplate[['mrp']] = copy_from[['MRP']].copy()
+        master_tamplate[['mrp']] = copy_from[['MRP']].copy()
         master_tamplate[['net_sales_quantity']] = copy_from[['Units']].copy()
         master_tamplate[['net_amount']] = copy_from[['Net Sales']].copy()
         # master_tamplate[['product_category']] = copy_from[['PRODUCT_CATEGORY']].copy()
-        # master_tamplate[['product_sub_category']] = copy_from[['PRODUCT_SUB_CATEGORY']].copy()
+        master_tamplate[['product_code']] = copy_from[['Product code']].copy()
         master_tamplate[['product_description']] = copy_from[['Product Description']].copy()
         # master_tamplate[['sales_quantity']] = copy_from[['SALES_RET_QTY']].copy()
         master_tamplate[['retailer_code']] = copy_from[['Party Code']].copy()
         master_tamplate[['retailer_name']] = copy_from[['Party']].copy()
+        copy_from['transaction type'] = np.where(copy_from['Gross Sales'] < 0, 'CRN', 'Invoice')
+        master_tamplate[['gstr1']] = copy_from[['transaction type']].copy()
         # master_tamplate[['sales_return_qty']] = copy_from[['TOTAL_SALES_QTY']].copy()
         # master_tamplate[['sales_return_free_qty']] = copy_from[['SALES_RET_FREE_QTY']].copy()
         # master_tamplate[['sales_return_value']] = copy_from[['SALES_RET_VALUE']].copy()
@@ -777,14 +722,13 @@ for index, row1 in p.iterrows():
         master_tamplate[['total_tax_amount']] = copy_from[['Total Tax']].copy()
         # master_tamplate[['tax_percentage']] = copy_from[['TAX_PERCENTAGE']].copy()
         # master_tamplate[['vehicle_name']] = copy_from[['VEHICLE']].copy()
-        # master_tamplate[['basic_rate']] = copy_from[['BASIC_RATE']].copy()
         master_tamplate[['brand']] = brand_id
         master_tamplate[['warehouse']] = hub_id
-        
         df = pd.DataFrame(master_tamplate)
         print('\n=> Transformations completed')        
-        print('\n=> Fetching required columns')
-        
+        print('\n=> Fetching required columns') 
+        df = df.fillna(0)
+
         counter = 0
         for row in df.itertuples():
             counter+=1
@@ -792,53 +736,259 @@ for index, row1 in p.iterrows():
                             INSERT INTO dbo.sales_master 
                                     (    dms_invoice_number
                                         ,dms_invoice_date
-                                        ,gross_amount 
+                                        ,gross_amount
+                                        ,mrp
                                         ,net_sales_quantity
-                                        ,net_amount 
-                                        ,product_description 
-                                        ,retailer_code
+                                        ,net_amount
+                                        ,product_code 
+                                        ,product_description
+                                        ,retailer_code 
                                         ,retailer_name
-                                        ,total_tax_amount 
+                                        ,gstr1
+                                        ,total_tax_amount
                                         ,brand
                                         ,warehouse
                                     )
-                                VALUES (?,?,?,?,?,?,?,?,?,?,?)
+                                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                         ''',
-                                   row.dms_invoice_number
-                                  ,row.dms_invoice_date
-                                  ,row.gross_amount 
-                                  ,row.net_sales_quantity
-                                  ,row.net_amount 
-                                  ,row.product_description 
-                                  ,row.retailer_code
-                                  ,row.retailer_name
-                                  ,row.total_tax_amount 
-                                  ,row.brand
-                                  ,row.warehouse               
+                                         row.dms_invoice_number
+                                        ,row.dms_invoice_date
+                                        ,row.gross_amount
+                                        ,row.mrp
+                                        ,row.net_sales_quantity
+                                        ,row.net_amount
+                                        ,row.product_code 
+                                        ,row.product_description
+                                        ,row.retailer_code 
+                                        ,row.retailer_name
+                                        ,row.gstr1
+                                        ,row.total_tax_amount
+                                        ,row.brand
+                                        ,row.warehouse
+                          )
+        conn.commit()
+        hub_dir['Loaded_rows'].mask((hub_dir['Hub_id'] == hub_id) & (hub_dir['Brand_id'] == brand_id) ,counter ,inplace = True)
+        print('\n{} rows inserted for brand {} and hub {}'.format(counter,brand,hub))  
+     
+    
+    
+##Kimberly Clarke RP
+    if brand_id == '09' and hub_id == '03':
+        filecounter+=1
+        conn = pyodbc.connect('Driver={SQL Server};'
+                              'Server=LAPTOP-TCEH1402;'
+                              'Database=Sales_Lake;'
+                              'Trusted_Connection=yes;')
+        cursor = conn.cursor()
+        
+        print("\n\nDeleting Records between {} to {} for brand {} and Warehouse={}".format(first_day,Upload_date,brand,hub))
+        selection = str("select count(*) from [dbo].[sales_master] where brand = ") + str(int(brand_id)) + " and  warehouse = " + str(int(hub_id)) + str(" and  dms_invoice_date between '") + str(first_day) + str("' ") + str("and '") + Upload_date + str("'")
+        cursor.execute(selection)
+        for row1 in cursor.fetchall():
+            print("\n{} rows deleted".format(row1[0]))
+            
+        deletion = str("delete from [dbo].[sales_master] where brand = ")+ str(int(brand_id)) +" and  warehouse = " + str(int(hub_id)) + str(" and  dms_invoice_date between '") + str(first_day) + str("' ") + str("and '") + Upload_date + str("'")
+        cursor.execute(deletion)
+        
+        print("\nLoading file of {} from {}".format(brand,hub))
+        hub_dir['File_flag'].mask((hub_dir['Hub_id'] == hub_id) & (hub_dir['Brand_id'] == brand_id) , 'Report Received',inplace = True)
+        
+        copy_from = pd.read_excel(file, skiprows=18)
+        hub_dir['Received_rows'].mask((hub_dir['Hub_id'] == hub_id) & (hub_dir['Brand_id'] == brand_id) ,copy_from.shape[0] ,inplace = True) 
+        
+        master_tamplate = pd.read_excel('master template.xlsx')        
+        master_tamplate['dms_invoice_date'] = copy_from['Transaction Date'].copy()
+        master_tamplate[['dms_invoice_number']] = copy_from[['Transaction No.']].copy()
+        master_tamplate[['retailer_code']] = copy_from[['Customer Code']].copy()
+        master_tamplate[['retailer_name']] = copy_from[['Customer Name']].copy()
+        master_tamplate[['product_code']] = copy_from[['Product Code']].copy()
+        master_tamplate[['product_description']] = copy_from[['Product Description ']].copy()
+        master_tamplate[['gross_amount']] = copy_from[['Gross Amount (₹)']].copy()
+        # master_tamplate[['promotion_discount_amount']] = copy_from[['Discount Amt (₹)']].copy()
+        master_tamplate[['total_tax_amount']] = copy_from[['Tax Amount (₹)']].copy()
+        master_tamplate[['net_amount']] = copy_from[['Net Price(₹)']].copy()
+        master_tamplate[['gstr1']] = copy_from[['Transaction Type']].copy()
+        master_tamplate[['salesman_code']] = copy_from[['Salesman Code']].copy()
+        master_tamplate[['salesman_name']] = copy_from[['Salesman Name ']].copy()
+        master_tamplate[['brand']] = brand_id
+        master_tamplate[['warehouse']] = hub_id
+        df = pd.DataFrame(master_tamplate)
+        print('\n=> Transformations completed')        
+        print('\n=> Fetching required columns')        
+        counter = 0
+        for row in df.itertuples():
+            counter+=1
+            cursor.execute('''
+                            INSERT INTO dbo.sales_master 
+                                    (    dms_invoice_number
+                                        ,dms_invoice_date
+                                        ,retailer_code 
+                                        ,retailer_name
+                                        ,product_code 
+                                        ,product_description 
+                                        ,gross_amount 
+                                        ,total_tax_amount
+                                        ,net_amount
+                                        ,gstr1
+                                        ,salesman_code
+                                        ,salesman_name
+                                        ,brand
+                                        ,warehouse
+                                    )
+                                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                        ''',
+                                 row.dms_invoice_number
+                                ,row.dms_invoice_date
+                                ,row.retailer_code
+                                ,row.retailer_name
+                                ,row.product_code
+                                ,row.product_description
+                                ,row.gross_amount
+                                ,row.total_tax_amount
+                                ,row.net_amount
+                                ,row.gstr1
+                                ,row.salesman_code
+                                ,row.salesman_name
+                                ,row.brand
+                                ,row.warehouse
                           )
         conn.commit()
         hub_dir['Loaded_rows'].mask((hub_dir['Hub_id'] == hub_id) & (hub_dir['Brand_id'] == brand_id) ,counter ,inplace = True)
         print('\n{} rows inserted for brand {} and hub {}'.format(counter,brand,hub))
 
+    
+    
+#MCD BM    
+    if brand_id =='08' and hub_id == '04':
+        filecounter+=1
+        conn = pyodbc.connect('Driver={SQL Server};'
+                              'Server=LAPTOP-TCEH1402;'
+                              'Database=Sales_Lake;'
+                              'Trusted_Connection=yes;')
+        cursor = conn.cursor()
+        
+        print("\n\nDeleting Records between {} to {} for brand {} and Warehouse={}".format(first_day,Upload_date,brand,hub))
+        selection = str("select count(*) from [dbo].[sales_master] where brand = ") + str(int(brand_id)) + " and  warehouse = " + str(int(hub_id)) + str(" and  dms_invoice_date between '") + str(first_day) + str("' ") + str("and '") + Upload_date + str("'")
+        cursor.execute(selection)
+        for row1 in cursor.fetchall():
+            print("\n{} rows deleted".format(row1[0]))
+            
+        deletion = str("delete from [dbo].[sales_master] where brand = ")+ str(int(brand_id)) +" and  warehouse = " + str(int(hub_id)) + str(" and  dms_invoice_date between '") + str(first_day) + str("' ") + str("and '") + Upload_date + str("'")
+        print(deletion)
+        cursor.execute(deletion)
+        
+        print("\nLoading file of {} from {}".format(brand,hub))
+        hub_dir['File_flag'].mask((hub_dir['Hub_id'] == hub_id) & (hub_dir['Brand_id'] == brand_id) , 'Report Received',inplace = True)
+        
+        copy_from = pd.read_excel(file, 'Bill Wise Sales', skiprows=14)
+        copy_from = copy_from[copy_from['Party'] != 'GRAND TOTAL']
+        for index, row in copy_from.iterrows():
+            bill_date = row['Bill Date']
+            sales_value = row['Gross Sales']
+            if sales_value < 0 and bill_date < first_day:
+                    copy_from.at[index, 'Bill Date'] = Upload_date
+        hub_dir['Received_rows'].mask((hub_dir['Hub_id'] == hub_id) & (hub_dir['Brand_id'] == brand_id) ,copy_from.shape[0] ,inplace = True) 
+        
+        master_tamplate = pd.read_excel('master template.xlsx')
+        # master_tamplate[['sno']] = copy_from[['Sr No']].copy()
+        # master_tamplate[['beat']] = copy_from[['BEAT_NAME']].copy()
+        # master_tamplate[['category']] = copy_from[['CATEGORY']].copy()
+        # master_tamplate[['channel']] = copy_from[['PRIMARY_CHANNEL']].copy()
+        # master_tamplate[['secondary_channel']] = copy_from[['SECONDARY_CHANNEL']].copy()
+        master_tamplate[['dms_invoice_number']] = copy_from[['Bill Number']].copy()
+        master_tamplate[['dms_invoice_date']] = copy_from[['Bill Date']].copy()
+        #master_tamplate['dms_invoice_date'] = pd.to_datetime(master_tamplate['dms_invoice_date']).dt.date
+        # master_tamplate[['dms_invoice_status']] = copy_from[['BILL_STATUS']].copy()
+        # master_tamplate[['free_qty']] = copy_from[['SALES_FREE_QTY']].copy()
+        master_tamplate[['gross_amount']] = copy_from[['Gross Sales']].copy()
+        # master_tamplate[['invoice_quantity']] = copy_from[['TOTAL_SALES_QTY']].copy()
+        master_tamplate[['mrp']] = copy_from[['MRP']].copy()
+        master_tamplate[['net_sales_quantity']] = copy_from[['Units']].copy()
+        master_tamplate[['net_amount']] = copy_from[['Net Sales']].copy()
+        # master_tamplate[['product_category']] = copy_from[['PRODUCT_CATEGORY']].copy()
+        master_tamplate[['product_code']] = copy_from[['Product code']].copy()
+        master_tamplate[['product_description']] = copy_from[['Product Description']].copy()
+        # master_tamplate[['sales_quantity']] = copy_from[['SALES_RET_QTY']].copy()
+        master_tamplate[['retailer_code']] = copy_from[['Party Code']].copy()
+        master_tamplate[['retailer_name']] = copy_from[['Party']].copy()
+        copy_from['transaction type'] = np.where(copy_from['Gross Sales'] < 0, 'CRN', 'Invoice')
+        master_tamplate[['gstr1']] = copy_from[['transaction type']].copy()
+        # master_tamplate[['sales_return_qty']] = copy_from[['TOTAL_SALES_QTY']].copy()
+        # master_tamplate[['sales_return_free_qty']] = copy_from[['SALES_RET_FREE_QTY']].copy()
+        # master_tamplate[['sales_return_value']] = copy_from[['SALES_RET_VALUE']].copy()
+        # master_tamplate[['retailer_gstin']] = copy_from[['Party GSTIN Number']].copy()
+        master_tamplate[['total_tax_amount']] = copy_from[['Total Tax']].copy()
+        # master_tamplate[['tax_percentage']] = copy_from[['TAX_PERCENTAGE']].copy()
+        # master_tamplate[['vehicle_name']] = copy_from[['VEHICLE']].copy()
+        master_tamplate[['brand']] = brand_id
+        master_tamplate[['warehouse']] = hub_id
+        df = pd.DataFrame(master_tamplate)
+        print('\n=> Transformations completed')        
+        print('\n=> Fetching required columns') 
+        df = df.fillna(0)
+
+        counter = 0
+        for row in df.itertuples():
+            counter+=1
+            cursor.execute('''
+                            INSERT INTO dbo.sales_master 
+                                    (    dms_invoice_number
+                                        ,dms_invoice_date
+                                        ,gross_amount
+                                        ,mrp
+                                        ,net_sales_quantity
+                                        ,net_amount
+                                        ,product_code 
+                                        ,product_description
+                                        ,retailer_code 
+                                        ,retailer_name
+                                        ,gstr1
+                                        ,total_tax_amount
+                                        ,brand
+                                        ,warehouse
+                                    )
+                                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                        ''',
+                                         row.dms_invoice_number
+                                        ,row.dms_invoice_date
+                                        ,row.gross_amount
+                                        ,row.mrp
+                                        ,row.net_sales_quantity
+                                        ,row.net_amount
+                                        ,row.product_code 
+                                        ,row.product_description
+                                        ,row.retailer_code 
+                                        ,row.retailer_name
+                                        ,row.gstr1
+                                        ,row.total_tax_amount
+                                        ,row.brand
+                                        ,row.warehouse
+                          )
+        conn.commit()
+        hub_dir['Loaded_rows'].mask((hub_dir['Hub_id'] == hub_id) & (hub_dir['Brand_id'] == brand_id) ,counter ,inplace = True)
+        print('\n{} rows inserted for brand {} and hub {}'.format(counter,brand,hub))        
+        
+
+        
 ##Docomo BM
     if brand_id =='12' and hub_id == '04':
         filecounter+=1
         conn = pyodbc.connect('Driver={SQL Server};'
                               'Server=LAPTOP-TCEH1402;'
-                              'Database=IPL_V1;'
+                              'Database=Sales_Lake;'
                               'Trusted_Connection=yes;')
         cursor = conn.cursor()
         
-        print("\nDeleting Records between {} to {} for brand Brand={} and Warehouse={}".format(first_day,Upload_date,brand,hub))
-        selection = str("select count(*) from [dbo].[sales_master] where brand = ")+ str(int(brand_id)) + str(" and  dms_invoice_date between '") + str(first_day) + str("' ") + str("and '") + Upload_date + str("'")
+        print("\n\nDeleting Records between {} to {} for brand {} and Warehouse={}".format(first_day,Upload_date,brand,hub))
+        selection = str("select count(*) from [dbo].[sales_master] where brand = ") + str(int(brand_id)) + " and  warehouse = " + str(int(hub_id)) + str(" and  dms_invoice_date between '") + str(first_day) + str("' ") + str("and '") + Upload_date + str("'")
         cursor.execute(selection)
         for row1 in cursor.fetchall():
             print("\n{} rows deleted".format(row1[0]))
             
-        deletion = str("delete from [dbo].[sales_master] where brand = ")+ str(int(brand_id)) + str(" and  dms_invoice_date between '") + str(first_day) + str("' ") + str("and '") + Upload_date + str("'")
+        deletion = str("delete from [dbo].[sales_master] where brand = ")+ str(int(brand_id)) +" and  warehouse = " + str(int(hub_id)) + str(" and  dms_invoice_date between '") + str(first_day) + str("' ") + str("and '") + Upload_date + str("'")
         cursor.execute(deletion)
         
-        print("\n\nLoading file of {} from {}".format(brand,hub))
+        print("\nLoading file of {} from {}".format(brand,hub))
         hub_dir['File_flag'].mask((hub_dir['Hub_id'] == hub_id) & (hub_dir['Brand_id'] == brand_id) , 'Report Received',inplace = True)
         
         copy_from = pd.read_excel(file, 'Sheet1', skiprows=2)
@@ -911,116 +1061,27 @@ for index, row1 in p.iterrows():
         hub_dir['Loaded_rows'].mask((hub_dir['Hub_id'] == hub_id) & (hub_dir['Brand_id'] == brand_id) ,counter ,inplace = True)
         print('\n{} rows inserted for brand {} and hub {}'.format(counter,brand,hub))
 
-#MCD BM    
-    if brand_id =='08' and hub_id == '04':
-        filecounter+=1
-        conn = pyodbc.connect('Driver={SQL Server};'
-                              'Server=LAPTOP-TCEH1402;'
-                              'Database=IPL_V1;'
-                              'Trusted_Connection=yes;')
-        cursor = conn.cursor()
-        
-        print("\nDeleting Records between {} to {} for brand Brand={} and Warehouse={}".format(first_day,Upload_date,brand,hub))
-        selection = str("select count(*) from [dbo].[sales_master] where brand = ")+ str(int(brand_id)) + str(" and  dms_invoice_date between '") + str(first_day) + str("' ") + str("and '") + Upload_date + str("'")
-        cursor.execute(selection)
-        for row1 in cursor.fetchall():
-            print("\n{} rows deleted".format(row1[0]))
-            
-        deletion = str("delete from [dbo].[sales_master] where brand = ")+ str(int(brand_id)) + str(" and  dms_invoice_date between '") + str(first_day) + str("' ") + str("and '") + Upload_date + str("'")
-        cursor.execute(deletion)
-        
-        print("\n\nLoading file of {} from {}".format(brand,hub))
-        hub_dir['File_flag'].mask((hub_dir['Hub_id'] == hub_id) & (hub_dir['Brand_id'] == brand_id) , 'Report Received',inplace = True)
-        
-        copy_from = pd.read_excel(file, 'Sheet1', skiprows=2)
-        hub_dir['Received_rows'].mask((hub_dir['Hub_id'] == hub_id) & (hub_dir['Brand_id'] == brand_id) ,copy_from.shape[0] ,inplace = True) 
 
-        # master_tamplate[['sno']] = copy_from[['Sr No']].copy()
-        # master_tamplate[['beat']] = copy_from[['BEAT_NAME']].copy()
-        master_tamplate[['dms_invoice_number']] = copy_from[['Bill Number']].copy()
-        master_tamplate[['dms_invoice_date']] = copy_from[['Bill Date']].copy()
-        # master_tamplate[['dms_invoice_status']] = copy_from[['BILL_STATUS']].copy()
-        # master_tamplate[['free_qty']] = copy_from[['SALES_FREE_QTY']].copy()
-        master_tamplate[['gross_amount']] = copy_from[['Gross Sales']].copy()
-        # master_tamplate[['invoice_quantity']] = copy_from[['TOTAL_SALES_QTY']].copy()
-        # master_tamplate[['mrp']] = copy_from[['MRP']].copy()
-        master_tamplate[['net_sales_quantity']] = copy_from[['Units']].copy()
-        master_tamplate[['net_amount']] = copy_from[['Net Sales']].copy()
-        # master_tamplate[['product_category']] = copy_from[['PRODUCT_CATEGORY']].copy()
-        # master_tamplate[['product_sub_category']] = copy_from[['PRODUCT_SUB_CATEGORY']].copy()
-        master_tamplate[['product_description']] = copy_from[['Product Description']].copy()
-        # master_tamplate[['sales_quantity']] = copy_from[['SALES_RET_QTY']].copy()
-        master_tamplate[['retailer_code']] = copy_from[['Party Code']].copy()
-        master_tamplate[['retailer_name']] = copy_from[['Party']].copy()
-        # master_tamplate[['sales_return_qty']] = copy_from[['TOTAL_SALES_QTY']].copy()
-        # master_tamplate[['sales_return_free_qty']] = copy_from[['SALES_RET_FREE_QTY']].copy()
-        # master_tamplate[['sales_return_value']] = copy_from[['SALES_RET_VALUE']].copy()
-        # master_tamplate[['retailer_gstin']] = copy_from[['Party GSTIN Number']].copy()
-        master_tamplate[['total_tax_amount']] = copy_from[['Total Tax']].copy()
-        # master_tamplate[['tax_percentage']] = copy_from[['TAX_PERCENTAGE']].copy()
-        # master_tamplate[['vehicle_name']] = copy_from[['VEHICLE']].copy()
-        # master_tamplate[['basic_rate']] = copy_from[['BASIC_RATE']].copy()
-        master_tamplate[['brand']] = brand_id
-        master_tamplate[['warehouse']] = hub_id
-        
-        df = pd.DataFrame(master_tamplate)
-        print('\n=> Transformations completed')        
-        print('\n=> Fetching required columns')
-        
-        counter = 0
-        for row in df.itertuples():
-            counter+=1
-            cursor.execute('''
-                            INSERT INTO dbo.sales_master 
-                                    (    dms_invoice_number
-                                        ,dms_invoice_date
-                                        ,gross_amount 
-                                        ,net_sales_quantity
-                                        ,net_amount 
-                                        ,product_description 
-                                        ,retailer_code
-                                        ,retailer_name
-                                        ,total_tax_amount 
-                                        ,brand
-                                        ,warehouse
-                                    )
-                                VALUES (?,?,?,?,?,?,?,?,?,?,?)
-                        ''',
-                                   row.dms_invoice_number
-                                  ,row.dms_invoice_date
-                                  ,row.gross_amount 
-                                  ,row.net_sales_quantity
-                                  ,row.net_amount 
-                                  ,row.product_description 
-                                  ,row.retailer_code
-                                  ,row.retailer_name
-                                  ,row.total_tax_amount 
-                                  ,row.brand
-                                  ,row.warehouse               
-                          )
-        conn.commit()
-        hub_dir['Loaded_rows'].mask((hub_dir['Hub_id'] == hub_id) & (hub_dir['Brand_id'] == brand_id) ,counter ,inplace = True)
-        print('\n{} rows inserted for brand {} and hub {}'.format(counter,brand,hub))
 
 ##KIA GGN
     if brand_id =='01' and hub_id == '05':
         filecounter+=1
         conn = pyodbc.connect('Driver={SQL Server};'
                               'Server=LAPTOP-TCEH1402;'
-                              'Database=IPL_V1;'
+                              'Database=Sales_Lake;'
                               'Trusted_Connection=yes;')
         cursor = conn.cursor()
         
-        print("\nDeleting Records between {} to {} for brand Brand={} and Warehouse={}".format(first_day,Upload_date,brand,hub))
-        selection = str("select count(*) from [dbo].[sales_master] where brand = ")+ str(int(brand_id)) + str(" and  dms_invoice_date between '") + str(first_day) + str("' ") + str("and '") + Upload_date + str("'")
+        print("\n\nDeleting Records between {} to {} for brand {} and Warehouse={}".format(first_day,Upload_date,brand,hub))
+        selection = str("select count(*) from [dbo].[sales_master] where brand = ") + str(int(brand_id)) + " and  warehouse = " + str(int(hub_id)) + str(" and  dms_invoice_date between '") + str(first_day) + str("' ") + str("and '") + Upload_date + str("'")
         cursor.execute(selection)
         for row1 in cursor.fetchall():
             print("\nBrand={} and Warehouse={}\n{} rows deleted".format(brand,hub,row1[0]))
             
-        deletion = str("delete from [dbo].[sales_master] where brand = ")+ str(int(brand_id)) + str(" and  dms_invoice_date between '") + str(first_day) + str("' ") + str("and '") + Upload_date + str("'")
+        deletion = str("delete from [dbo].[sales_master] where brand = ")+ str(int(brand_id)) +" and  warehouse = " + str(int(hub_id)) + str(" and  dms_invoice_date between '") + str(first_day) + str("' ") + str("and '") + Upload_date + str("'")
         cursor.execute(deletion)
         
-        print("\n\nLoading file of {} from {}".format(brand,hub))
+        print("\nLoading file of {} from {}".format(brand,hub))
         hub_dir['File_flag'].mask((hub_dir['Hub_id'] == hub_id) & (hub_dir['Brand_id'] == brand_id) , 'Report Received',inplace = True)
         
         copy_from = pd.read_excel(file, 'Sheet1', skiprows=2)
@@ -1097,11 +1158,123 @@ for index, row1 in p.iterrows():
         conn.commit()
         hub_dir['Loaded_rows'].mask((hub_dir['Hub_id'] == hub_id) & (hub_dir['Brand_id'] == brand_id) ,counter ,inplace = True)
         print('\n{} rows inserted for brand {} and hub {}'.format(counter,brand,hub))
+    
+    
+    
+#MCD GGN
+    
+    if brand_id =='08' and hub_id == '05':
+        filecounter+=1
+        conn = pyodbc.connect('Driver={SQL Server};'
+                              'Server=LAPTOP-TCEH1402;'
+                              'Database=Sales_Lake;'
+                              'Trusted_Connection=yes;')
+        cursor = conn.cursor()
+        
+        print("\n\nDeleting Records between {} to {} for brand {} and Warehouse={}".format(first_day,Upload_date,brand,hub))
+        selection = str("select count(*) from [dbo].[sales_master] where brand = ") + str(int(brand_id)) + " and  warehouse = " + str(int(hub_id)) + str(" and  dms_invoice_date between '") + str(first_day) + str("' ") + str("and '") + Upload_date + str("'")
+        cursor.execute(selection)
+        for row1 in cursor.fetchall():
+            print("\n{} rows deleted".format(row1[0]))
+            
+        deletion = str("delete from [dbo].[sales_master] where brand = ")+ str(int(brand_id)) +" and  warehouse = " + str(int(hub_id)) + str(" and  dms_invoice_date between '") + str(first_day) + str("' ") + str("and '") + Upload_date + str("'")
+        print(deletion)
+        cursor.execute(deletion)
+        
+        print("\nLoading file of {} from {}".format(brand,hub))
+        hub_dir['File_flag'].mask((hub_dir['Hub_id'] == hub_id) & (hub_dir['Brand_id'] == brand_id) , 'Report Received',inplace = True)
+        
+        copy_from = pd.read_excel(file, 'Bill Wise Sales', skiprows=14)
+        copy_from = copy_from[copy_from['Party'] != 'GRAND TOTAL']
+        for index, row in copy_from.iterrows():
+            bill_date = row['Bill Date']
+            sales_value = row['Gross Sales']
+            if sales_value < 0 and bill_date < first_day:
+                    copy_from.at[index, 'Bill Date'] = Upload_date
+        hub_dir['Received_rows'].mask((hub_dir['Hub_id'] == hub_id) & (hub_dir['Brand_id'] == brand_id) ,copy_from.shape[0] ,inplace = True) 
+        
+        master_tamplate = pd.read_excel('master template.xlsx')
+        # master_tamplate[['sno']] = copy_from[['Sr No']].copy()
+        # master_tamplate[['beat']] = copy_from[['BEAT_NAME']].copy()
+        # master_tamplate[['category']] = copy_from[['CATEGORY']].copy()
+        # master_tamplate[['channel']] = copy_from[['PRIMARY_CHANNEL']].copy()
+        # master_tamplate[['secondary_channel']] = copy_from[['SECONDARY_CHANNEL']].copy()
+        master_tamplate[['dms_invoice_number']] = copy_from[['Bill Number']].copy()
+        master_tamplate[['dms_invoice_date']] = copy_from[['Bill Date']].copy()
+        #master_tamplate['dms_invoice_date'] = pd.to_datetime(master_tamplate['dms_invoice_date']).dt.date
+        # master_tamplate[['dms_invoice_status']] = copy_from[['BILL_STATUS']].copy()
+        # master_tamplate[['free_qty']] = copy_from[['SALES_FREE_QTY']].copy()
+        master_tamplate[['gross_amount']] = copy_from[['Gross Sales']].copy()
+        # master_tamplate[['invoice_quantity']] = copy_from[['TOTAL_SALES_QTY']].copy()
+        master_tamplate[['mrp']] = copy_from[['MRP']].copy()
+        master_tamplate[['net_sales_quantity']] = copy_from[['Units']].copy()
+        master_tamplate[['net_amount']] = copy_from[['Net Sales']].copy()
+        # master_tamplate[['product_category']] = copy_from[['PRODUCT_CATEGORY']].copy()
+        master_tamplate[['product_code']] = copy_from[['Product code']].copy()
+        master_tamplate[['product_description']] = copy_from[['Product Description']].copy()
+        # master_tamplate[['sales_quantity']] = copy_from[['SALES_RET_QTY']].copy()
+        master_tamplate[['retailer_code']] = copy_from[['Party Code']].copy()
+        master_tamplate[['retailer_name']] = copy_from[['Party']].copy()
+        copy_from['transaction type'] = np.where(copy_from['Gross Sales'] < 0, 'CRN', 'Invoice')
+        master_tamplate[['gstr1']] = copy_from[['transaction type']].copy()
+        # master_tamplate[['sales_return_qty']] = copy_from[['TOTAL_SALES_QTY']].copy()
+        # master_tamplate[['sales_return_free_qty']] = copy_from[['SALES_RET_FREE_QTY']].copy()
+        # master_tamplate[['sales_return_value']] = copy_from[['SALES_RET_VALUE']].copy()
+        # master_tamplate[['retailer_gstin']] = copy_from[['Party GSTIN Number']].copy()
+        master_tamplate[['total_tax_amount']] = copy_from[['Total Tax']].copy()
+        # master_tamplate[['tax_percentage']] = copy_from[['TAX_PERCENTAGE']].copy()
+        # master_tamplate[['vehicle_name']] = copy_from[['VEHICLE']].copy()
+        master_tamplate[['brand']] = brand_id
+        master_tamplate[['warehouse']] = hub_id
+        df = pd.DataFrame(master_tamplate)
+        print('\n=> Transformations completed')        
+        print('\n=> Fetching required columns') 
+        df = df.fillna(0)
 
+        counter = 0
+        for row in df.itertuples():
+            counter+=1
+            cursor.execute('''
+                            INSERT INTO dbo.sales_master 
+                                    (    dms_invoice_number
+                                        ,dms_invoice_date
+                                        ,gross_amount
+                                        ,mrp
+                                        ,net_sales_quantity
+                                        ,net_amount
+                                        ,product_code 
+                                        ,product_description
+                                        ,retailer_code 
+                                        ,retailer_name
+                                        ,gstr1
+                                        ,total_tax_amount
+                                        ,brand
+                                        ,warehouse
+                                    )
+                                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                        ''',
+                                         row.dms_invoice_number
+                                        ,row.dms_invoice_date
+                                        ,row.gross_amount
+                                        ,row.mrp
+                                        ,row.net_sales_quantity
+                                        ,row.net_amount
+                                        ,row.product_code 
+                                        ,row.product_description
+                                        ,row.retailer_code 
+                                        ,row.retailer_name
+                                        ,row.gstr1
+                                        ,row.total_tax_amount
+                                        ,row.brand
+                                        ,row.warehouse
+                          )
+        conn.commit()
+       
+        hub_dir['Loaded_rows'].mask((hub_dir['Hub_id'] == hub_id) & (hub_dir['Brand_id'] == brand_id) ,counter ,inplace = True)
+        print('\n{} rows inserted for brand {} and hub {}'.format(counter,brand,hub)) 
 
-
+conn.close()
 hub_dir['RC_validation_flag'] = np.where((hub_dir['Received_rows'] == hub_dir['Loaded_rows']) & (hub_dir['File_flag'] == 'Report Received'), 'Success',hub_dir['RC_validation_flag']) 
-
 print('\nGenerating data staging report...')
 print('\n files received = {} \n files loaded = {}'.format(p.shape[0]-1,filecounter))
 upload_path = r"F:\Projects\RIPPLR\Upload_Reports\\"
