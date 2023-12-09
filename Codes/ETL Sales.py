@@ -12,7 +12,7 @@ day_num = date_object.strftime("%d")
 first_day = date_object - timedelta(days=int(day_num) - 1)
 
 os.chdir('F:\Projects\RIPPLR\SALES')
-hub_dir = pd.read_excel('F:\Projects\RIPPLR\Hub_directory.xlsx', 'Sheet1')
+hub_dir = pd.read_excel('F:\Projects\ETL\Hub_directory.xlsx', 'Sheet1')
 hub_dir['Hub_id'] = hub_dir['Hub_id'].map(str)
 hub_dir['Hub_id'] = '0' + hub_dir['Hub_id']
 
@@ -21,7 +21,7 @@ hub_dir['File_flag'] = 'Report not received'
 hub_dir['Received_rows'] = ''
 hub_dir['Loaded_rows'] = ''
 hub_dir['RC_validation_flag'] = 'NA'
-p = pd.DataFrame(os.listdir('F:\Projects\RIPPLR\SALES'), columns=['filename'])
+p = pd.DataFrame(os.listdir('F:\Projects\ETL\SALES'), columns=['filename'])
 p['Hub_id'] = p['filename'].str.slice(0,2)
 p['Brand_id'] =  p['filename'].str.slice(3,5)
 
@@ -1277,7 +1277,7 @@ conn.close()
 hub_dir['RC_validation_flag'] = np.where((hub_dir['Received_rows'] == hub_dir['Loaded_rows']) & (hub_dir['File_flag'] == 'Report Received'), 'Success',hub_dir['RC_validation_flag']) 
 print('\nGenerating data staging report...')
 print('\n files received = {} \n files loaded = {}'.format(p.shape[0]-1,filecounter))
-upload_path = r"F:\Projects\RIPPLR\Upload_Reports\\"
+upload_path = r"F:\Projects\ETL\Upload_Reports\\"
 hub_dir.to_excel(upload_path + 'Upload_report_' + str(datetime.fromtimestamp(time.time())).replace(':','_') + ".xlsx",index=False)
 print('\nUpload Report Generated successfully. \nsaved at :' + upload_path)
                                                                  
